@@ -1,13 +1,37 @@
-export type JobStatus = 'Wishlist' | 'Applied' | 'Follow-up' | 'Interview' | 'Offer' | 'Rejected';
+export type JobPriority = 'High' | 'Medium' | 'Low';
+export type WorkModel = 'Remote' | 'Hybrid' | 'On-site';
 
-export interface Job {
-  id: string;
+export type JobBoardStatus = 
+  | 'To Apply'
+  | 'Applied'
+  | 'Screening'
+  | 'Interviewing'
+  | 'Offer'
+  | 'Rejected';
+
+export type ColorScheme = 'purple' | 'blue' | 'emerald' | 'orange' | 'pink' | 'cyan';
+
+export interface JobItem {
+  id: string; // UUID
   companyName: string;
   jobTitle: string;
-  jobUrl?: string;
-  resumeUsed?: string;
+  roleDomain: string; 
+  priority: JobPriority;
+  workModel: WorkModel;
+  salary: string; 
+  location: string;
+  jobUrl: string;
+  resumeUsed: string;
+  notes: string;
+  status: JobBoardStatus;
   dateApplied: number;
-  salaryRange?: string;
-  notes?: string;
-  status: JobStatus;
+  tags?: string[];
+  
+  // JobPilot specifics
+  colorScheme?: ColorScheme;
+  matchPercentage?: number;
+  interviewDate?: number; // timestamp
+  interviewName?: string;
+  interviewType?: 'Video' | 'Phone' | 'On-site';
+  tasks?: { title: string; completed: boolean }[];
 }

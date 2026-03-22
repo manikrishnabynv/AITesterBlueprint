@@ -1,126 +1,142 @@
 import React, { useState, useEffect } from 'react';
-import type { Job, JobStatus } from '../types';
 import { X } from 'lucide-react';
+import type { JobItem, JobPriority, WorkModel, JobBoardStatus } from '../types';
+import { cn } from '../utils';
 
 interface JobModalProps {
-  job?: Job | null;
+  job: JobItem | null; // null means create new
   onClose: () => void;
-  onSave: (job: Job) => Promise<void>;
-  existingResumes: string[];
+  onSave: (job: JobItem) => void;
+  existingRoles: string[];
 }
 
-const STATUSES: JobStatus[] = ['Wishlist', 'Applied', 'Follow-up', 'Interview', 'Offer', 'Rejected'];
-
-export function JobModal({ job, onClose, onSave, existingResumes }: JobModalProps) {
-  const [formData, setFormData] = useState<Partial<Job>>({
+export function JobModal({ job, onClose, onSave, existingRoles }: JobModalProps) {
+  const [formData, setFormData] = useState<Partial<JobItem>>({
     companyName: '',
     jobTitle: '',
+    roleDomain: existingRoles[0] || 'Engineering',
+    priority: 'Medium',
+    workModel: 'Remote',
+    salary: '',
+    location: '',
     jobUrl: '',
     resumeUsed: '',
-    dateApplied: Date.now(),
-    salaryRange: '',
     notes: '',
-    status: 'Wishlist',
+    status: 'Applied',
+    tags: [],
   });
+  const [tagsStr, setTagsStr] = useState('');
 
   useEffect(() => {
     if (job) {
       setFormData(job);
+      setTagsStr(job.tags?.join(', ') || '');
     }
   }, [job]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: name === 'dateApplied' ? new Date(value).getTime() : value
-    }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.companyName || !formData.jobTitle) return;
-
-    const newJob: Job = {
-      ...(formData as Job),
-      id: job?.id || crypto.randomUUID(),
-    };
-    
-    await onSave(newJob);
+    const finalJob: JobItem = {
+      ...(job || { id: crypto.randomUUID(), dateApplied: Date.now() }),
+      ...formData,
+      tags: tagsStr.split(',').map(s => s.trim()).filter(Boolean)
+    } as JobItem;
+    onSave(finalJob);
     onClose();
   };
 
-  const formattedDate = new Date(formData.dateApplied || Date.now()).toISOString().split('T')[0];
+  const statuses: JobBoardStatus[] = ['To Apply', 'Applied', 'Screening', 'Interviewing', 'Offer', 'Rejected'];
+  const priorities: JobPriority[] = ['Low', 'Medium', 'High'];
+  const workModels: WorkModel[] = ['Remote', 'Hybrid', 'On-site'];
+  const colorSchemes = ['purple', 'blue', 'emerald', 'orange', 'pink', 'cyan'];
+
+  const inputClass = "w-full bg-[#f8fafc] dark:bg-[#0B0F19] text-gray-900 dark:text-gray-200 border border-gray-200 dark:border-gray-700/80 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-400";
+  const labelClass = "block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/50 transition-opacity">
-      <div className="bg-white dark:bg-gray-900 w-full max-w-md h-full shadow-2xl overflow-y-auto flex flex-col border-l border-gray-200 dark:border-gray-800 animate-slide-in">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-            {job ? 'Edit Job' : 'Add New Job'}
-          </h2>
-          <button onClick={onClose} className="p-2 -mr-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-[#131A2A] border border-gray-100 dark:border-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-[#f8fafc] dark:bg-[#0B0F19]">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{job ? 'Edit Application' : 'Track New Job'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors bg-white dark:bg-[#111827] p-1.5 rounded-lg border border-gray-200 dark:border-gray-800">
             <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 flex-1 flex flex-col">
-          <div className="space-y-4 flex-1">
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Company Name *</label>
-              <input required name="companyName" value={formData.companyName} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="Acme Corp" />
+              <label className={labelClass}>Company Name *</label>
+              <input required name="companyName" value={formData.companyName} onChange={handleChange} className={inputClass} placeholder="e.g. Stripe" />
+            </div>
+            <div>
+              <label className={labelClass}>Job Title *</label>
+              <input required name="jobTitle" value={formData.jobTitle} onChange={handleChange} className={inputClass} placeholder="e.g. Senior Software Engineer" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Job Title / Role *</label>
-              <input required name="jobTitle" value={formData.jobTitle} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="Software Engineer" />
+              <label className={labelClass}>Status</label>
+              <select name="status" value={formData.status} onChange={handleChange} className={inputClass}>
+                {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
             </div>
-
+            
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status ⚑</label>
-              <select name="status" value={formData.status} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                {STATUSES.map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
+              <label className={labelClass}>Card Theme Color</label>
+              <select name="colorScheme" value={formData.colorScheme || 'blue'} onChange={handleChange} className={inputClass}>
+                {colorSchemes.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">LinkedIn / Job URL</label>
-              <input type="url" name="jobUrl" value={formData.jobUrl} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="https://linkedin.com/jobs/..." />
+              <label className={labelClass}>Work Model</label>
+              <select name="workModel" value={formData.workModel} onChange={handleChange} className={inputClass}>
+                {workModels.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Location</label>
+              <input name="location" value={formData.location} onChange={handleChange} className={inputClass} placeholder="e.g. San Francisco or Remote" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Resume Used</label>
-              <input list="resumes" name="resumeUsed" value={formData.resumeUsed} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="Frontend_Resume_v2" />
-              <datalist id="resumes">
-                {existingResumes.map(r => <option key={r} value={r} />)}
-              </datalist>
+              <label className={labelClass}>Priority</label>
+              <select name="priority" value={formData.priority} onChange={handleChange} className={inputClass}>
+                {priorities.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
             </div>
-
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date Applied</label>
-                <input type="date" name="dateApplied" value={formattedDate} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-              </div>
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Salary Range</label>
-                <input name="salaryRange" value={formData.salaryRange} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="$150-180K" />
-              </div>
-            </div>
-
-            <div className="flex-1 min-h-[100px] flex flex-col">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
-              <textarea name="notes" value={formData.notes} onChange={handleChange} className="w-full flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none" placeholder="Referred by John Doe. HM name is Smith..." />
+            <div>
+              <label className={labelClass}>Salary Details</label>
+              <input name="salary" value={formData.salary || ''} onChange={handleChange} className={inputClass} placeholder="e.g. $200k - $250k" />
             </div>
           </div>
 
-          <div className="pt-4 mt-6 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-3 sticky bottom-0 bg-white dark:bg-gray-900">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700">
+          <div>
+             <label className={labelClass}>Tags (comma separated)</label>
+             <input value={tagsStr} onChange={e => setTagsStr(e.target.value)} className={inputClass} placeholder="e.g. Python, AI/ML, Rust" />
+          </div>
+
+          <div>
+            <label className={labelClass}>Job Post URL</label>
+            <input type="url" name="jobUrl" value={formData.jobUrl || ''} onChange={handleChange} className={inputClass} placeholder="https://..." />
+          </div>
+
+          <div>
+            <label className={labelClass}>Notes</label>
+            <textarea name="notes" value={formData.notes || ''} onChange={handleChange} className={cn(inputClass, "resize-none h-24")} placeholder="Add specific notes, interview feedback..." />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 mt-2 border-t border-gray-800">
+            <button type="button" onClick={onClose} className="px-5 py-2 rounded-lg text-sm font-semibold text-gray-400 hover:text-white bg-[#111827] border border-gray-800 hover:border-gray-600 transition-colors">
               Cancel
             </button>
-            <button type="submit" className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm">
-              {job ? 'Save Changes' : 'Create Job'}
+            <button type="submit" className="px-6 py-2 rounded-lg text-sm font-bold bg-cyan-500 hover:bg-cyan-400 text-gray-900 shadow hover:shadow-cyan-500/20 transition-all">
+              Save Job
             </button>
           </div>
         </form>

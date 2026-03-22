@@ -11,32 +11,35 @@ import {
 } from '@dnd-kit/core';
 import type { DragStartEvent, DragOverEvent, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import type { Job, JobStatus } from '../types';
-import { KanbanColumn } from './KanbanColumn';
+import type { JobItem, JobBoardStatus } from '../types';
+import { KanbanColumn, type ColumnDef } from './KanbanColumn';
 import { JobCard } from './JobCard';
 
-const COLUMNS: JobStatus[] = ['Wishlist', 'Applied', 'Follow-up', 'Interview', 'Offer', 'Rejected'];
+const FLAT_BOARD_COLUMNS: ColumnDef[] = [
+  { id: 'col-to-apply', title: 'To Apply', status: 'To Apply', dotColor: 'bg-indigo-400' },
+  { id: 'col-applied', title: 'Applied', status: 'Applied', dotColor: 'bg-blue-400' },
+  { id: 'col-screening', title: 'Screening', status: 'Screening', dotColor: 'bg-amber-400' },
+  { id: 'col-interviewing', title: 'Interviewing', status: 'Interviewing', dotColor: 'bg-emerald-400' },
+  { id: 'col-offer', title: 'Offer', status: 'Offer', dotColor: 'bg-purple-400' },
+  { id: 'col-rejected', title: 'Rejected', status: 'Rejected', dotColor: 'bg-rose-400' },
+];
 
 interface KanbanBoardProps {
-  jobs: Job[];
-  setJobs: React.Dispatch<React.SetStateAction<Job[]>>;
-  onUpdateJob: (job: Job) => Promise<void>;
-  onEdit: (job: Job) => void;
+  jobs: JobItem[];
+  setJobs: React.Dispatch<React.SetStateAction<JobItem[]>>;
+  onUpdateJob: (job: JobItem) => Promise<void>;
+  onEdit: (job: JobItem) => void;
   onDelete: (id: string) => void;
+  selectedRoles?: string[];
+  nextInterviewId?: string;
 }
 
-export function KanbanBoard({ jobs, setJobs, onUpdateJob, onEdit, onDelete }: KanbanBoardProps) {
-  const [activeJob, setActiveJob] = useState<Job | null>(null);
+export function KanbanBoard({ jobs, setJobs, onUpdateJob, onEdit, onDelete, selectedRoles, nextInterviewId }: KanbanBoardProps) {
+  const [activeJob, setActiveJob] = useState<JobItem | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -54,34 +57,36 @@ export function KanbanBoard({ jobs, setJobs, onUpdateJob, onEdit, onDelete }: Ka
 
     if (activeId === overId) return;
 
-    const isActiveTask = active.data.current?.type === 'Job';
-    const isOverTask = over.data.current?.type === 'Job';
+    const isActiveTask = active.data.current?.type === 'Task';
+    const isOverTask = over.data.current?.type === 'Task';
     const isOverColumn = over.data.current?.type === 'Column';
 
     if (!isActiveTask) return;
 
-    setJobs((jobs) => {
-      const activeIndex = jobs.findIndex((j) => j.id === activeId);
-      const activeJob = jobs[activeIndex];
+    setJobs((prev) => {
+      const activeIndex = prev.findIndex((t) => t.id === activeId);
+      const activeTask = prev[activeIndex];
 
       if (isOverTask) {
-        const overIndex = jobs.findIndex((j) => j.id === overId);
-        const overJob = jobs[overIndex];
+        const overIndex = prev.findIndex((t) => t.id === overId);
+        const overTask = prev[overIndex];
         
-        if (activeJob.status !== overJob.status) {
-          activeJob.status = overJob.status;
-          return arrayMove(jobs, activeIndex, overIndex);
+        if (activeTask.status !== overTask.status) {
+          activeTask.status = overTask.status;
+          return arrayMove(prev, activeIndex, overIndex);
         }
-        return arrayMove(jobs, activeIndex, overIndex);
+        return arrayMove(prev, activeIndex, overIndex);
       }
 
-      const isOverCol = isOverColumn ? overId : null;
-      if (isOverCol && activeJob.status !== isOverCol) {
-        activeJob.status = isOverCol as JobStatus;
-        return arrayMove(jobs, activeIndex, activeIndex);
+      if (isOverColumn) {
+        const targetStatus = over.data.current?.status as JobBoardStatus;
+        if (targetStatus && activeTask.status !== targetStatus) {
+          activeTask.status = targetStatus;
+          return arrayMove(prev, activeIndex, activeIndex);
+        }
       }
 
-      return jobs;
+      return prev;
     });
   };
 
@@ -94,15 +99,14 @@ export function KanbanBoard({ jobs, setJobs, onUpdateJob, onEdit, onDelete }: Ka
     const overId = over.id;
 
     if (activeId !== overId) {
-      setJobs((jobs) => {
-        const activeIndex = jobs.findIndex((j) => j.id === activeId);
-        const overIndex = jobs.findIndex((j) => j.id === overId);
-        return arrayMove(jobs, activeIndex, overIndex);
+      setJobs((prev) => {
+        const activeIndex = prev.findIndex((t) => t.id === activeId);
+        const overIndex = prev.findIndex((t) => t.id === overId);
+        return arrayMove(prev, activeIndex, overIndex >= 0 ? overIndex : activeIndex);
       });
     }
 
-    // Persist final status to IndexedDB
-    const finalJob = jobs.find((j) => j.id === activeId);
+    const finalJob = jobs.find((t) => t.id === activeId);
     if (finalJob) {
       await onUpdateJob(finalJob);
     }
@@ -116,19 +120,23 @@ export function KanbanBoard({ jobs, setJobs, onUpdateJob, onEdit, onDelete }: Ka
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-4 h-full overflow-x-auto pb-4 custom-scrollbar items-start">
-        {COLUMNS.map((col) => (
-          <KanbanColumn
-            key={col}
-            status={col}
-            jobs={jobs.filter((j) => j.status === col)}
-            onEdit={onEdit}
-            onDelete={onDelete}
-          />
-        ))}
+      <div className="flex flex-col min-h-full">
+         <div className="flex gap-5 items-start min-h-[500px] px-2 pb-6">
+            {FLAT_BOARD_COLUMNS.map((col) => (
+               <KanbanColumn
+                  key={col.id}
+                  column={col}
+                  jobs={jobs.filter((j) => j.status === col.status)}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  selectedRoles={selectedRoles}
+                  nextInterviewId={nextInterviewId}
+               />
+            ))}
+         </div>
       </div>
 
-      <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.5' } } }) }}>
+      <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.4' } } }) }}>
         {activeJob ? (
           <JobCard job={activeJob} onEdit={onEdit} onDelete={onDelete} />
         ) : null}
