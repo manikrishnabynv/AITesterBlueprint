@@ -32,7 +32,7 @@ export default function App() {
   const [workModelFilter, setWorkModelFilter] = useState<string[]>([]);
 
   const uniqueRoles = useMemo(() => Array.from(new Set(jobs.map(j => j.jobTitle))), [jobs]);
-  
+
   const toggleRole = (role: string) => {
     setSelectedRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]);
   };
@@ -85,6 +85,40 @@ export default function App() {
     }
     return result;
   }, [jobs, searchQuery, selectedMonthIdx, selectedYear, priorityFilter, workModelFilter]);
+
+  // Companies for current month — grouped by status
+  const groupedCompanies = useMemo(() => {
+    const groups: Record<string, { name: string; role: string }[]> = {};
+    filteredJobs.forEach(j => {
+      if (!groups[j.status]) groups[j.status] = [];
+      if (!groups[j.status].find(c => c.name === j.companyName)) {
+        groups[j.status].push({ name: j.companyName, role: j.jobTitle });
+      }
+    });
+    return groups;
+  }, [filteredJobs]);
+
+  // Conversion funnel numbers for current month
+  const funnelData = useMemo(() => {
+    const mj = filteredJobs;
+    const applied = mj.filter(j => j.status === 'Applied' || j.status === 'Screening' || j.status === 'Interviewing' || j.status === 'Offer' || j.status === 'Rejected').length;
+    const screening = mj.filter(j => j.status === 'Screening' || j.status === 'Interviewing' || j.status === 'Offer').length;
+    const interview = mj.filter(j => j.status === 'Interviewing' || j.status === 'Offer').length;
+    const offer = mj.filter(j => j.status === 'Offer').length;
+    return { applied, screening, interview, offer, total: mj.length };
+  }, [filteredJobs]);
+
+  // Recent activity (mock from real data)
+  const recentActivity = useMemo(() => {
+    const activities: { icon: string; text: string; time: string; color: string }[] = [];
+    filteredJobs.slice(0, 4).forEach((j, i) => {
+      const timeLabels = ['2h ago', '5h ago', '1d ago', '2d ago'];
+      const icons: Record<string, string> = { 'Interviewing': '🎯', 'Offer': '🎉', 'Rejected': '❌', 'Applied': '📨', 'Screening': '🔍', 'To Apply': '📋' };
+      const colors: Record<string, string> = { 'Interviewing': 'text-emerald-500', 'Offer': 'text-purple-500', 'Rejected': 'text-rose-500', 'Applied': 'text-blue-500', 'Screening': 'text-amber-500', 'To Apply': 'text-gray-400' };
+      activities.push({ icon: icons[j.status] || '📋', text: `${j.companyName} → ${j.status}`, time: timeLabels[i] || '3d ago', color: colors[j.status] || 'text-gray-400' });
+    });
+    return activities;
+  }, [filteredJobs]);
 
   const nextInterviewJob = useMemo(() => {
     const upcoming = jobs.filter(j => j.interviewDate && j.interviewDate > Date.now()).sort((a, b) => a.interviewDate! - b.interviewDate!);
@@ -199,21 +233,101 @@ export default function App() {
           <NavItem id="Reports" icon={<BarChart3 size={18} strokeWidth={2.5} />} label="Reports" />
         </div>
 
-        {/* Applications checkboxes */}
-        <div className="flex flex-col gap-2 px-4 flex-1 overflow-y-auto">
-          <span className="text-[10px] font-bold tracking-widest text-[#a8b3c6] dark:text-gray-600 uppercase px-3 mb-2 mt-2">Applications</span>
-          <div className="px-3 flex flex-col gap-2.5 mt-1">
-             {uniqueRoles.map(role => (
-               <label key={role} className="flex items-center gap-3 cursor-pointer group select-none">
-                  <div className={cn("w-4 h-4 rounded border flex items-center justify-center transition-colors shadow-sm shrink-0", selectedRoles.includes(role) ? "bg-blue-500 border-blue-500" : "border-gray-300 dark:border-gray-600 bg-white dark:bg-[#111827] group-hover:border-blue-400")}>
-                    {selectedRoles.includes(role) && <Check size={12} className="text-white" strokeWidth={4} />}
-                  </div>
-                  <span className={cn("text-xs font-bold transition-colors leading-snug truncate", selectedRoles.includes(role) ? "text-blue-600 dark:text-blue-400" : "text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-200")}>{role}</span>
-                  <input type="checkbox" checked={selectedRoles.includes(role)} onChange={() => toggleRole(role)} className="hidden" />
-               </label>
-             ))}
+        {/* ===== SCROLLABLE PANEL ===== */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-3 min-h-0">
+
+        {/* ===== FILTER CHIPS ===== */}
+        <div className="px-5">
+          <span className="text-[10px] font-bold tracking-widest text-[#a8b3c6] dark:text-gray-600 uppercase mb-2 block">Filter Roles</span>
+          <div className="flex flex-wrap gap-1.5">
+            {uniqueRoles.map(role => {
+              const short = role.replace('Engineer', 'Eng').replace('Senior ', 'Sr ').replace('Infrastructure', 'Infra').replace('Automation', 'Auto');
+              return (
+                <button
+                  key={role}
+                  onClick={() => toggleRole(role)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all duration-200 border",
+                    selectedRoles.includes(role)
+                      ? "bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-500/30 scale-105"
+                      : "bg-white dark:bg-[#111827] text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:text-blue-500"
+                  )}
+                >
+                  {short}
+                </button>
+              );
+            })}
           </div>
         </div>
+
+        {/* ===== CONVERSION FUNNEL ===== */}
+        <div className="px-5">
+          <span className="text-[10px] font-bold tracking-widest text-[#a8b3c6] dark:text-gray-600 uppercase mb-2 block">Pipeline ({MONTHS[selectedMonthIdx]})</span>
+          <div className="bg-white dark:bg-[#111827] border border-gray-200 dark:border-gray-800 rounded-xl p-3 shadow-sm">
+            {[
+              { label: 'Applied', count: funnelData.applied, color: 'bg-blue-500', pct: funnelData.total ? (funnelData.applied / funnelData.total) * 100 : 0 },
+              { label: 'Screening', count: funnelData.screening, color: 'bg-amber-500', pct: funnelData.total ? (funnelData.screening / funnelData.total) * 100 : 0 },
+              { label: 'Interview', count: funnelData.interview, color: 'bg-emerald-500', pct: funnelData.total ? (funnelData.interview / funnelData.total) * 100 : 0 },
+              { label: 'Offer', count: funnelData.offer, color: 'bg-purple-500', pct: funnelData.total ? (funnelData.offer / funnelData.total) * 100 : 0 },
+            ].map(step => (
+              <div key={step.label} className="mb-2 last:mb-0">
+                <div className="flex justify-between mb-0.5">
+                  <span className="text-[9px] font-bold text-gray-500 dark:text-gray-400">{step.label}</span>
+                  <span className="text-[9px] font-bold text-gray-400">{step.count}</span>
+                </div>
+                <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                  <div className={cn('h-full rounded-full transition-all duration-700', step.color)} style={{ width: `${step.pct}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ===== COMPANIES BY STATUS ===== */}
+        <div className="flex flex-col gap-1 px-5">
+          <span className="text-[10px] font-bold tracking-widest text-[#a8b3c6] dark:text-gray-600 uppercase mb-1">Companies ({MONTHS[selectedMonthIdx]})</span>
+          {Object.keys(groupedCompanies).length === 0 && <span className="text-[10px] text-gray-400 italic px-1">No applications this month</span>}
+          {(['Interviewing', 'Applied', 'Screening', 'Offer', 'Rejected', 'To Apply'] as const).map(status => {
+            const items = groupedCompanies[status];
+            if (!items || items.length === 0) return null;
+            const dotColor = status === 'Interviewing' ? 'bg-emerald-500' : status === 'Applied' ? 'bg-blue-500' : status === 'Screening' ? 'bg-amber-500' : status === 'Offer' ? 'bg-purple-500' : status === 'Rejected' ? 'bg-rose-500' : 'bg-gray-400';
+            const labelColor = status === 'Interviewing' ? 'text-emerald-600 dark:text-emerald-400' : status === 'Offer' ? 'text-purple-600 dark:text-purple-400' : status === 'Rejected' ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500 dark:text-gray-400';
+            return (
+              <div key={status} className="mb-1.5">
+                <div className="flex items-center gap-1.5 mb-1 px-1">
+                  <div className={cn('w-1.5 h-1.5 rounded-full', dotColor)} />
+                  <span className={cn('text-[9px] font-bold uppercase tracking-wider', labelColor)}>{status}</span>
+                  <span className="text-[9px] font-bold text-gray-300 dark:text-gray-600 ml-auto">{items.length}</span>
+                </div>
+                {items.map(c => (
+                  <div key={c.name} className="flex items-center gap-2 py-1 px-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800/60 transition-colors cursor-default">
+                    <div className="w-5 h-5 rounded-md bg-gradient-to-br from-gray-200 to-gray-100 dark:from-gray-700 dark:to-gray-800 flex items-center justify-center text-[8px] font-black text-gray-600 dark:text-gray-300 shrink-0">{c.name.charAt(0)}</div>
+                    <div className="flex flex-col flex-1 min-w-0">
+                      <span className="text-[10px] font-bold text-gray-700 dark:text-gray-200 truncate leading-tight">{c.name}</span>
+                      <span className="text-[8px] text-gray-400 truncate leading-tight">{c.role}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ===== RECENT ACTIVITY ===== */}
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-800">
+          <span className="text-[10px] font-bold tracking-widest text-[#a8b3c6] dark:text-gray-600 uppercase mb-2 block">Activity</span>
+          <div className="flex flex-col gap-1.5">
+            {recentActivity.map((a, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-xs shrink-0">{a.icon}</span>
+                <span className={cn('text-[10px] font-semibold truncate flex-1', a.color)}>{a.text}</span>
+                <span className="text-[8px] text-gray-400 font-medium shrink-0">{a.time}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        </div>{/* end scrollable panel */}
 
         {/* Profile */}
         <div className="p-4 mt-auto">
@@ -325,7 +439,7 @@ export default function App() {
            {activeTab === 'Overview' && <OverviewView jobs={filteredJobs} />}
            {activeTab === 'Schedule' && <ScheduleView jobs={jobs} />}
            {activeTab === 'Note' && <NoteView />}
-           {activeTab === 'Reports' && <ReportsView allJobs={jobs} />}
+           {activeTab === 'Reports' && <ReportsView allJobs={jobs} selectedMonthIdx={selectedMonthIdx} selectedYear={selectedYear} />}
         </div>
       </main>
 

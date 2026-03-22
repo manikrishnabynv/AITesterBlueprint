@@ -133,9 +133,13 @@ export function JobCard({ job, onEdit, onDelete, isHighlighted, isNextInterview 
          </button>
       </div>
 
-      <h4 className={cn("text-base font-extrabold pr-4 leading-snug mb-3", themeVars.textPrimary)}>
+      <h4 className={cn("text-base font-extrabold pr-4 leading-snug mb-1", themeVars.textPrimary)}>
          {job.jobTitle}
       </h4>
+      <span className={cn("text-xs font-bold mb-3 flex items-center gap-1.5", themeVars.textSecondary)}>
+        <span className="w-4 h-4 rounded-md bg-white/30 dark:bg-white/10 flex items-center justify-center text-[9px] font-black shrink-0">{job.companyName.charAt(0)}</span>
+        {job.companyName}
+      </span>
 
       {/* Task List (if available) */}
       {job.tasks && job.tasks.length > 0 ? (
